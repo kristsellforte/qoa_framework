@@ -1,0 +1,1 @@
+cp -r ./tasks/.base_task ./tasks/$1
