@@ -5,7 +5,6 @@ from datetime import datetime
 from airflow.operators.python_operator import PythonOperator
 
 from launcher.launcher import launch_docker_container
-from launcher.launcher_docker import do_test_docker
 
 default_args = {
     'owner': 'airflow',

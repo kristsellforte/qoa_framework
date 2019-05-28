@@ -84,27 +84,6 @@ def launch_docker_container(**context):
         'EXECUTION_ID': execution_id
     }
 
-    # centralize storage with volumes
-    volumes= ['/data', '/models', '/scores']
-    volume_bindings = {
-                        '/Users/kristskreics/code/thesis2/thesis/airflow/data': {
-                            'bind': '/data',
-                            'mode': 'rw'
-                        },
-                        '/Users/kristskreics/code/thesis2/thesis/airflow/models': {
-                            'bind': '/models',
-                            'mode': 'rw'
-                        },
-                        '/Users/kristskreics/code/thesis2/thesis/airflow/scores': {
-                            'bind': '/scores',
-                            'mode': 'rw'
-                        },
-                        '/Users/kristskreics/code/thesis2/thesis/airflow/config': {
-                            'bind': '/config',
-                            'mode': 'rw'
-                        }
-    }
-
     host_config = client.create_host_config(binds=volume_bindings, mem_limit='100m', network_mode='host')
 
     container = client.create_container(image=image_name, environment=environment, command=command, volumes=volumes, host_config=host_config)
@@ -124,6 +103,5 @@ def launch_docker_container(**context):
 
     result = untar_file_and_get_result_json(client, container)
     log.info(f"Result was {result}")
-    # prin
-    # context['task_instance'].xcom_push('quality_setting', quality_setting, context['execution_date'])
+
     context['task_instance'].xcom_push('data', result, context['execution_date'])
