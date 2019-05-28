@@ -1,0 +1,192 @@
+version: '2.1'
+services:
+  redis:
+    image: 'redis:3.2.7'
+
+  postgres:
+    image: postgres:9.6
+    environment:
+      - POSTGRES_USER=airflow2
+      - POSTGRES_PASSWORD=airflow2
+      - POSTGRES_DB=airflow2
+
+  webserver:
+    image: puckel-airflow-with-docker-inside:latest
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - LOAD_EX=n
+      - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - EXECUTOR=Celery
+      # - POSTGRES_USER=airflow
+      # - POSTGRES_PASSWORD=airflow
+      # - POSTGRES_DB=airflow
+      # - REDIS_PASSWORD=redispass
+    volumes:
+      - ./requirements.txt:/requirements.txt
+      - ./dags:/usr/local/airflow/dags
+      - ./data:/data
+      - ./models:/models
+      - ./scores:/scores
+      - ./config:/config
+      - ./.aws:/.aws
+      # Uncomment to include custom plugins
+      # - ./plugins:/usr/local/airflow/plugins
+    ports:
+      - "8080:8080"
+    command: webserver
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /usr/local/airflow/airflow-webserver.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  flower:
+    image: puckel-airflow-with-docker-inside:latest
+    restart: always
+    depends_on:
+      - redis
+    environment:
+      - EXECUTOR=Celery
+      # - REDIS_PASSWORD=redispass
+    ports:
+      - "5555:5555"
+    command: flower
+
+  scheduler:
+    image: puckel-airflow-with-docker-inside:latest
+    restart: always
+    depends_on:
+      - webserver
+    volumes:
+      - ./dags:/usr/local/airflow/dags
+      - ./requirements.txt:/requirements.txt
+      - ./data:/data
+      - ./models:/models
+      - ./scores:/scores
+      - ./config:/config
+      - ./.aws:/.aws
+#      - ./plugins:/usr/local/airflow/plugins
+    environment:
+      - LOAD_EX=n
+      - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - EXECUTOR=Celery
+      # - POSTGRES_USER=airflow
+      # - POSTGRES_PASSWORD=airflow
+      # - POSTGRES_DB=airflow
+      # - REDIS_PASSWORD=redispass
+    command: scheduler
+
+  worker:
+    image: puckel-airflow-with-docker-inside:latest
+    restart: always
+    depends_on:
+      - scheduler
+    volumes:
+      - ./dags:/usr/local/airflow/dags
+      - ./requirements.txt:/requirements.txt
+      - ./data:/data
+      - ./models:/models
+      - ./scores:/scores
+      - ./.aws:/.aws
+    environment:
+      - DOCKER_HOST=tcp://socat:2375
+      - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - EXECUTOR=Celery
+    command: worker
+  socat:
+    image: bpack/socat
+    command: TCP4-LISTEN:2375,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "2375"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.4.2
+    container_name: elasticsearch
+    environment:
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - http.cors.enabled=true
+      - http.cors.allow-origin=*
+      - discovery.zen.minimum_master_nodes=2
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata1:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+
+  elasticsearch2:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.4.2
+    container_name: elasticsearch2
+    environment:
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "discovery.zen.ping.unicast.hosts=elasticsearch"
+      - http.cors.enabled=true
+      - http.cors.allow-origin=*
+      - discovery.zen.minimum_master_nodes=2
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata2:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:6.4.2
+    container_name: kibana
+    environment:
+      SERVER_NAME: kibana.local
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    ports:
+      - 5601:5601
+
+  headPlugin:
+    image: mobz/elasticsearch-head:5
+    container_name: head
+    ports:
+      - '9100:9100'
+
+  rabbitmq:
+    image: rabbitmq:3.7-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    volumes:
+      - ./rabbitmqdata:/var/lib/rabbitmq
+    ports:
+      - 15672:15672
+      - 5672:5672
+    environment:
+      - RABBITMQ_DEFAULT_USER=user
+      - RABBITMQ_DEFAULT_PASS=password
+
+  elasticsearch_consumer:
+    image: elasticsearch_consumer
+    container_name: elasticsearch_consumer
+    depends_on:
+      - rabbitmq
+      - elasticsearch
+      - elasticsearch2
+
+  control_consumer:
+    image: control_consumer
+    container_name: control_consumer
+    depends_on:
+      - rabbitmq
+      - elasticsearch
+      - elasticsearch2
+
+volumes:
+  esdata1:
+    driver: local
+  esdata2:
+    driver: local
