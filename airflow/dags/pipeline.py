@@ -16,7 +16,7 @@ pipeline_id = 'pipeline'
 with DAG(pipeline_id, default_args=default_args) as dag:
 
     # EXAMPLE TASK SETUP:
-    # t1_id = 'clean_data'
+    # t1_id = 'qoa_framework_task_TASK_NAME'
     # t1 = PythonOperator(
     #     task_id=t1_id,
     #     provide_context=True,

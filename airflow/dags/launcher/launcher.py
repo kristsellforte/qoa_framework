@@ -84,9 +84,9 @@ def launch_docker_container(**context):
         'EXECUTION_ID': execution_id
     }
 
-    host_config = client.create_host_config(binds=volume_bindings, mem_limit='100m', network_mode='host')
+    host_config = client.create_host_config(network_mode="host")
 
-    container = client.create_container(image=image_name, environment=environment, command=command, volumes=volumes, host_config=host_config)
+    container = client.create_container(image=image_name, environment=environment, command=command, host_config=host_config)
 
     container_id = container.get('Id')
     log.info(f"Running container with id {container_id}")
