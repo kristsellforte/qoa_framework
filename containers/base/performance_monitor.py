@@ -12,21 +12,31 @@ import pika
 # secrets
 from credentials import credentials as credentials
 
-# Fargate service cost per second
-FARGATE_CPU_COST = 0.04048 / 60 / 60 
-FARGATE_RAM_COST = 0.004445 / 60 / 60
-INTERVAL = 1
-QUEUE_NAME = 'performance_monitor'
+def get_fargate_metrics_object(cpu, ram, elapsed_time, previous_result):
+    # Fargate service cost per second
+    FARGATE_CPU_COST = 0.04048 / 60 / 60 
+    FARGATE_RAM_COST = 0.004445 / 60 / 60
+    if previous_result and 'cost_usd' in previous_result:
+        cpu_cost = previous_result['cost_cpu'] + cpu * FARGATE_CPU_COST
+        ram_cost = previous_result['cost_ram'] + (ram['used']/1024/1024/1024) * FARGATE_RAM_COST * elapsed_time
+    else:
+        cpu_cost = cpu * FARGATE_CPU_COST
+        ram_cost = (ram['used']/1024/1024/1024) * FARGATE_RAM_COST * elapsed_time
+    
+    return { 'cost_cpu': cpu_cost, 'cost_ram': ram_cost, 'cost_usd': ram_cost + cpu_cost }
+
 
 class PerformanceMonitor:
-    def __init__(self, task_name, pipeline_id):
+    def __init__(self, task_name, pipeline_id, queue_name='performance_monitor', interval=1, define_metrics_object=get_fargate_metrics_object, credentials=credentials):
         self.task_name = task_name
         self.pipeline_id = pipeline_id
         self.stopped = False
         self.time = 0
-        self.cpu_cost = 0
-        self.ram_cost = 0
         self.results = []
+        self.interval = interval
+        self.queue_name = queue_name
+        self.get_custom_metrics_object = define_metrics_object
+        self.credentials = credentials
         self.data_sizes = {
             'in': {},
             'out': {},
@@ -36,8 +46,8 @@ class PerformanceMonitor:
         }
         self.s3_client = boto3.client(
             's3',
-            aws_access_key_id=credentials['aws_access_key'],
-            aws_secret_access_key=credentials['aws_secret_key']
+            aws_access_key_id=self.credentials['aws_access_key'],
+            aws_secret_access_key=self.credentials['aws_secret_key']
         )
 
 
@@ -46,12 +56,12 @@ class PerformanceMonitor:
         print(self.data_sizes)
         self.stopped = True
         print('Elapsed time', self.time)
-        metrics_object = { **self.get_metrics_object(), **{ 'final': True }}
+        metrics_object = { **self.get_metrics_object(), **{ 'final': True } }
         self.results.append(metrics_object)
         self.save_results()
         self.save_data_logs()
-        self.push_json_to_queue(QUEUE_NAME, json.dumps(metrics_object))
-        self.push_json_to_queue(QUEUE_NAME, json.dumps({**self.data_sizes, **{ 'metric_type': 'data_logs' }}))
+        self.push_json_to_queue(self.queue_name, json.dumps(metrics_object))
+        self.push_json_to_queue(self.queue_name, json.dumps({**self.data_sizes, **{ 'metric_type': 'data_logs' }}))
 
 
     def start(self):
@@ -61,26 +71,29 @@ class PerformanceMonitor:
 
     def get_metrics_object(self):
         cpu = psutil.cpu_percent()
-        self.cpu_cost += cpu * FARGATE_CPU_COST
         ram = dict(psutil.virtual_memory()._asdict())
-        self.ram_cost = (ram['used']/1024/1024/1024) * FARGATE_RAM_COST * INTERVAL
         t = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-        
-        return { 'cpu': cpu, 'ram': ram, 'date': t, 'time_elapsed': self.time, 'cost_usd': self.ram_cost + self.cpu_cost, 'task_name': self.task_name, 'pipeline_id': self.pipeline_id, 'metric_type': 'metrics' }
+        previous_result = self.results[-1] if len(self.results) > 0 else None
+
+        default = { 'cpu': cpu, 'ram': ram, 'date': t, 'time_elapsed': self.time, 'task_name': self.task_name, 'pipeline_id': self.pipeline_id, 'metric_type': 'metrics' }
+
+        return {**default, **self.get_custom_metrics_object(cpu, ram, self.time, previous_result)}
 
 
     def listen_to_resources(self):
         while not self.stopped:
-            self.time += INTERVAL
+            self.time += self.interval
             metrics_object = self.get_metrics_object()
             self.results.append(metrics_object)
-            self.push_json_to_queue(QUEUE_NAME, json.dumps(metrics_object))
-            time.sleep(INTERVAL)
+            self.push_json_to_queue(self.queue_name, json.dumps(metrics_object))
+            time.sleep(self.interval)
 
 
     def push_json_to_queue(self, queue, json):
-        rabbitmq_credentials = pika.PlainCredentials(credentials['rabbitmq_user'], credentials['rabbitmq_password'])
-        connection = pika.BlockingConnection(pika.ConnectionParameters(host=credentials['rabbitmq_host'], credentials=rabbitmq_credentials))
+        print(self.credentials, self.credentials['rabbitmq_host'], flush=True)
+        print(queue, flush=True)
+        rabbitmq_credentials = pika.PlainCredentials(self.credentials['rabbitmq_user'], self.credentials['rabbitmq_password'])
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.credentials['rabbitmq_host'], credentials=rabbitmq_credentials))
         channel = connection.channel()
 
         channel.queue_declare(queue=queue)
@@ -123,11 +136,5 @@ class PerformanceMonitor:
             'date': datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
             'metric_type': 'analytics'
         }
-        self.push_json_to_queue(QUEUE_NAME, json.dumps(metrics_object))
+        self.push_json_to_queue(self.queue_name, json.dumps(metrics_object))
 
-def main():
-    pm = PerformanceMonitor('task_name', 'new_id')
-    pm.start()
-
-if __name__ == "__main__":
-    main()

@@ -9,6 +9,8 @@ class Store:
     def __init__(self, performance_monitor, bucket_name='forecasting-pipeline-files'):
         self.performance_monitor = performance_monitor
         self.bucket_name = bucket_name
+        print(credentials)
+        print(credentials['aws_access_key'])
         self.client = boto3.client(
             's3',
             aws_access_key_id=credentials['aws_access_key'],

@@ -60,7 +60,7 @@ class ControlConsumer:
         print(" [x] Received %r" % body)
         body_dict = json.loads(body)
 
-        if not body_dict['pipeline_id']:
+        if not 'pipeline_id' in body_dict:
             print('Undefined pipeline_id!')
             return -1
 
