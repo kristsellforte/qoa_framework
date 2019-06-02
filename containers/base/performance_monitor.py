@@ -14,7 +14,7 @@ from credentials import credentials as credentials
 
 def get_fargate_metrics_object(cpu, ram, elapsed_time, previous_result):
     # Fargate service cost per second
-    FARGATE_CPU_COST = 0.04048 / 60 / 60 
+    FARGATE_CPU_COST = 0.04048 / 60 / 60
     FARGATE_RAM_COST = 0.004445 / 60 / 60
     if previous_result and 'cost_usd' in previous_result:
         cpu_cost = previous_result['cost_cpu'] + cpu * FARGATE_CPU_COST
@@ -22,7 +22,7 @@ def get_fargate_metrics_object(cpu, ram, elapsed_time, previous_result):
     else:
         cpu_cost = cpu * FARGATE_CPU_COST
         ram_cost = (ram['used']/1024/1024/1024) * FARGATE_RAM_COST * elapsed_time
-    
+
     return { 'cost_cpu': cpu_cost, 'cost_ram': ram_cost, 'cost_usd': ram_cost + cpu_cost }
 
 
@@ -137,4 +137,3 @@ class PerformanceMonitor:
             'metric_type': 'analytics'
         }
         self.push_json_to_queue(self.queue_name, json.dumps(metrics_object))
-
