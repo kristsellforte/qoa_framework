@@ -7,8 +7,8 @@ from credentials import credentials as credentials
 
 class Store:
     def __init__(self, performance_monitor, bucket_name='forecasting-pipeline-files'):
-        self.performance_monitor = performance_monitor
         self.bucket_name = bucket_name
+        self.performance_monitor = performance_monitor
         print(credentials)
         print(credentials['aws_access_key'])
         self.client = boto3.client(
@@ -39,7 +39,9 @@ class Store:
         self.performance_monitor.log_infile(local_filename)
         try:
             with open(local_filename, 'r') as f:
-                return pd.read_csv(f, delimiter=',')
+                df = pd.read_csv(f, delimiter=',')
+                self.performance_monitor.add_continuous_data_metrics({ "row_count": df.shape[0] })
+                return df
         except FileNotFoundError:
             return {}
 

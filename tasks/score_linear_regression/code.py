@@ -46,7 +46,7 @@ def main():
     pm = PerformanceMonitor(task_name='score_linear_regression', pipeline_id=params['pipeline_id'])
     store = Store(performance_monitor=pm, bucket_name='forecasting-pipeline-files')
     pm.start()
-    try: 
+    try:
         quality_setting = 'high'
         scores_path = 'scores/linear_regression.json'
         data_path = 'data/train.csv'
@@ -69,4 +69,4 @@ def main():
 if __name__ == "__main__" :
 
     main()
-    
+

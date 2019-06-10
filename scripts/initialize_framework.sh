@@ -1,3 +1,6 @@
+cd airflow
+docker build -t puckel-airflow-with-docker-inside .
+cd ../
 cd containers
 shopt -s nullglob
 dirlist=(*)

@@ -1,6 +1,5 @@
 import pandas as pd
 from sklearn import linear_model
-import statsmodels.api as sm
 import json
 import pickle
 import tarfile

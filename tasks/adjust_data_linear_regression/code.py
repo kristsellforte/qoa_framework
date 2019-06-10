@@ -26,7 +26,7 @@ def main():
     pm = PerformanceMonitor(task_name='adjust_data_linear_regression', pipeline_id=params['pipeline_id'])
     store = Store(performance_monitor=pm, bucket_name='forecasting-pipeline-files')
     pm.start()
-    try: 
+    try:
         quality_setting = 'high'
         data_path = 'data/train.csv'
         quality_presets_path = 'config/quality.json'

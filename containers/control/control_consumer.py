@@ -8,20 +8,21 @@ from credentials import credentials as credentials
 
 def default_get_control_action(body_dict):
     index = body_dict.pop('metric_type', None)
+    print(body_dict, flush=True)
     try:
         if index == 'metrics':
-            if body_dict['cost_usd'] > 1 or body_dict['time_elapsed'] > 5:
+            if body_dict['cost_usd'] > 1 or body_dict['time_elapsed'] > 500:
                 return 'SOFT_STOP'
-            elif body_dict['time_elapsed'] > 8:
+            elif body_dict['time_elapsed'] > 1000:
                 return 'HARD_STOP'
-        
+
         elif index == 'data_logs':
             if body_dict['task_name'] == 'clean_data':
                 if body_dict['in']['train.csv'] / 2 > body_dict['out']['train.csv']:
-                    return 'HARD_STOP'
+                    return 'SOFT_STOP'
 
         elif index == 'analytics':
-            if body_dict['payload']['r2_squared'] < 0.5:
+            if body_dict['payload']['r2_squared'] < 0.2:
                 return 'SOFT_STOP'
 
         else:
@@ -35,17 +36,17 @@ HARD_STOP_KEY = 'HARD_STOP'
 SOFT_STOP_KEY = 'SOFT_STOP'
 
 class ControlConsumer:
-    def __init__(self, queue_name='perfromance_monitor', credentials=credentials, control_action=default_get_control_action):
+    def __init__(self, queue_name='performance_monitor', credentials=credentials, control_action=default_get_control_action):
         self.queue_name = queue_name
         self.credentials = credentials
         self.control_action = control_action
 
 
     def start(self):
-        print('Started consumer listener')
+        print('Started control consumer listener', flush=True)
 
         rabbitmq_credentials = pika.PlainCredentials(self.credentials['rabbitmq_user'], self.credentials['rabbitmq_password'])
-        connection = pika.BlockingConnection(pika.ConnectionParameters(self.credentials['rabbitmq_host'], self.credentials['rabbitmq_port'], '/', rabbitmq_credentials)) 
+        connection = pika.BlockingConnection(pika.ConnectionParameters(self.credentials['rabbitmq_host'], self.credentials['rabbitmq_port'], '/', rabbitmq_credentials))
         channel = connection.channel()
 
         channel.queue_declare(queue=self.queue_name)
@@ -57,6 +58,7 @@ class ControlConsumer:
 
 
     def callback(self, ch, method, properties, body):
+        print(body, flush=True)
         print(" [x] Received %r" % body)
         body_dict = json.loads(body)
 
@@ -65,6 +67,8 @@ class ControlConsumer:
             return -1
 
         action = self.control_action(body_dict)
+
+        print(action, flush=True)
 
         if action == HARD_STOP_KEY:
             self.stop_pipeline(body_dict['pipeline_id'])
@@ -84,7 +88,7 @@ class ControlConsumer:
         response_dict = json.loads(response.text)
 
         uuid_mapping = {}
-        for key in response_dict:        
+        for key in response_dict:
             uuid = response_dict[key]['uuid']
             args_array = response_dict[key]['args'].split(',')
             pipeline_id = args_array[2].replace("'", "").strip()

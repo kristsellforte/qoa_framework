@@ -8,7 +8,7 @@ from launcher.launcher import launch_docker_container
 
 default_args = {
     'owner': 'airflow',
-    'start_date': datetime(2019, 5, 25),
+    'start_date': datetime(2019, 6, 10),
 }
 
 pipeline_id = 'qoa_framework_example_pipeline'

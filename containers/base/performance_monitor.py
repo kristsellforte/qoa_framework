@@ -12,7 +12,7 @@ import pika
 # secrets
 from credentials import credentials as credentials
 
-def get_fargate_metrics_object(cpu, ram, elapsed_time, previous_result):
+def get_fargate_metrics_object(cpu, ram, elapsed_time, previous_result, initial_ram):
     # Fargate service cost per second
     FARGATE_CPU_COST = 0.04048 / 60 / 60
     FARGATE_RAM_COST = 0.004445 / 60 / 60
@@ -37,6 +37,8 @@ class PerformanceMonitor:
         self.queue_name = queue_name
         self.get_custom_metrics_object = define_metrics_object
         self.credentials = credentials
+        self.continuous_data_metrics = { "row_count": 0 }
+        self.initial_ram = 0
         self.data_sizes = {
             'in': {},
             'out': {},
@@ -73,11 +75,25 @@ class PerformanceMonitor:
         cpu = psutil.cpu_percent()
         ram = dict(psutil.virtual_memory()._asdict())
         t = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-        previous_result = self.results[-1] if len(self.results) > 0 else None
+        if len(self.results) > 0:
+            previous_result = self.results[-1]
+        else:
+            previous_result = None
+            self.initial_ram = ram['active']
 
-        default = { 'cpu': cpu, 'ram': ram, 'date': t, 'time_elapsed': self.time, 'task_name': self.task_name, 'pipeline_id': self.pipeline_id, 'metric_type': 'metrics' }
+        default = {
+            'cpu': cpu,
+            'ram': ram,
+            'initial_ram':
+            self.initial_ram,
+            'date': t,
+            'time_elapsed': self.time,
+            'task_name': self.task_name,
+            'pipeline_id': self.pipeline_id,
+            'metric_type': 'metrics'
+        }
 
-        return {**default, **self.get_custom_metrics_object(cpu, ram, self.time, previous_result)}
+        return {**default, **self.get_custom_metrics_object(cpu, ram, self.time, previous_result, self.initial_ram), **self.continuous_data_metrics}
 
 
     def listen_to_resources(self):
@@ -93,7 +109,7 @@ class PerformanceMonitor:
         print(self.credentials, self.credentials['rabbitmq_host'], flush=True)
         print(queue, flush=True)
         rabbitmq_credentials = pika.PlainCredentials(self.credentials['rabbitmq_user'], self.credentials['rabbitmq_password'])
-        connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.credentials['rabbitmq_host'], credentials=rabbitmq_credentials))
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost', credentials=rabbitmq_credentials))
         channel = connection.channel()
 
         channel.queue_declare(queue=queue)
@@ -128,12 +144,17 @@ class PerformanceMonitor:
         self.data_sizes['out'][path] = size
 
 
+    def add_continuous_data_metrics(self, payload):
+        # cost_object = self.get_metrics_object()
+        self.continuous_data_metrics = payload
+        # self.push_json_to_queue(self.queue_name, json.dumps(**cost_object, **payload))
+
     def log_analytics_metric(self, payload):
+        payload_dict = json.loads(payload)
         metrics_object = {
-            'payload': payload,
             'task_name': self.task_name,
             'pipeline_id': self.pipeline_id,
             'date': datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S"),
             'metric_type': 'analytics'
         }
-        self.push_json_to_queue(self.queue_name, json.dumps(metrics_object))
+        self.push_json_to_queue(self.queue_name, json.dumps({**metrics_object, **payload_dict}))
